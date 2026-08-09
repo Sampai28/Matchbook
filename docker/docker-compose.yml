@@ -1,0 +1,71 @@
+# Matchbook local stack.
+#
+#   docker compose -f docker/docker-compose.yml up --build server
+#   docker compose -f docker/docker-compose.yml run --rm test
+#
+# There is no benchmark service here, on purpose. Benchmarks run natively under
+# WSL2; see bench/run_bench.sh and the note in docker/Dockerfile.
+
+name: matchbook
+
+services:
+  # The HTTP server plus the depth-of-book ladder viewer.
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: runtime
+    image: matchbook:latest
+    container_name: matchbook-server
+    ports:
+      - "8080:8080"
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--web"
+      - "/app/web"
+      - "--engine"
+      - "v3"
+      - "--symbols"
+      - "MBK,ACME"
+    healthcheck:
+      test: ["CMD", "/app/matchbook-server", "--help"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 3s
+    restart: unless-stopped
+
+  # Same image, paranoid invariant checking. Every event triggers a full book
+  # sweep and a violation aborts with a state dump, which is far too slow for
+  # any real load but is the right mode for reproducing a suspected corruption.
+  server-paranoid:
+    extends:
+      service: server
+    container_name: matchbook-server-paranoid
+    profiles: ["paranoid"]
+    ports:
+      - "8081:8080"
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--web"
+      - "/app/web"
+      - "--engine"
+      - "v3"
+      - "--paranoid"
+
+  # Unit tests, replay determinism, the differential oracle, and a short fuzz
+  # run. This is the target CI would use.
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: test
+    image: matchbook:test
+    container_name: matchbook-test
+    profiles: ["test"]

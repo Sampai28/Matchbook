@@ -1,0 +1,32 @@
+# Build output
+build/
+build-*/
+_deps/
+compile_commands.json
+CMakeUserPresets.json
+*.o
+*.a
+*.so
+
+# Benchmark results are NOT ignored: bench/results/ is committed so that any
+# number quoted anywhere can be traced back to the run that produced it.
+# The generated report is ignored, since it is derived from those results.
+bench/report.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local scratch
+/tmp/
+*.log
+!bench/results/*.log

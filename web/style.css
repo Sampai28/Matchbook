@@ -1,0 +1,130 @@
+:root {
+  --bg: #0d1117;
+  --panel: #151b23;
+  --panel-2: #1c232d;
+  --border: #262d38;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --bid: #3fb950;
+  --ask: #f85149;
+  --accent: #58a6ff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  max-width: 1180px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+h2 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase;
+     letter-spacing: 0.09em; color: var(--muted); }
+
+.meta { display: flex; gap: 12px; align-items: center; margin-left: auto; }
+.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.badge {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 10px; color: var(--accent);
+}
+.status-idle { color: var(--muted); }
+.status-live { color: var(--bid); }
+.status-error { color: var(--ask); }
+
+.controls, .spread-bar {
+  max-width: 1180px;
+  margin: 0 auto 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.controls label { color: var(--muted); font-size: 13px; }
+
+input, select {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 6px 9px; font: inherit; min-width: 0;
+}
+input[type=number] { width: 110px; }
+#symbol { width: 120px; }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+button {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 6px 14px; font: inherit; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #04121f; font-weight: 600; }
+
+.spread-bar { justify-content: space-between; }
+.spread-cell { flex: 1; min-width: 130px; }
+.spread-cell .label { color: var(--muted); font-size: 11px; text-transform: uppercase;
+                      letter-spacing: 0.08em; }
+.spread-cell .value { font-family: var(--mono); font-size: 20px; margin-top: 2px; }
+.value.bid { color: var(--bid); }
+.value.ask { color: var(--ask); }
+
+main {
+  max-width: 1180px; margin: 0 auto;
+  display: grid; grid-template-columns: 2fr 1fr; gap: 16px;
+}
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+.ladder, .panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px;
+}
+
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+th {
+  color: var(--muted); font-weight: 500; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right;
+}
+td { padding: 3px 8px; text-align: right; position: relative; }
+td.price { text-align: center; color: var(--text); font-weight: 600; }
+th.price { text-align: center; }
+tr.spread-row td { color: var(--muted); text-align: center; font-size: 11px;
+                   padding: 6px 8px; border-top: 1px solid var(--border);
+                   border-bottom: 1px solid var(--border); }
+td.empty { text-align: center; color: var(--muted); padding: 24px; }
+
+/* The size bar is a background gradient on the cell rather than a child
+   element, so the number stays selectable and the row height never shifts. */
+td.bid-qty { color: var(--bid); }
+td.ask-qty { color: var(--ask); }
+
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.row label { width: 88px; color: var(--muted); font-size: 13px; }
+.row input, .row select { flex: 1; }
+.row.actions { margin-top: 12px; }
+
+.response {
+  margin: 12px 0 0; padding: 10px; max-height: 260px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  white-space: pre-wrap; word-break: break-all;
+}
+
+footer {
+  max-width: 1180px; margin: 18px auto 0;
+  color: var(--muted); font-size: 12px;
+}
+code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }

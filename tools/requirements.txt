@@ -1,0 +1,6 @@
+# Matchbook Python tooling.
+#
+# Deliberately minimal. flowgen.py, reference_matcher.py and validate_fills.py
+# use only the standard library, so the differential oracle runs with no
+# installation at all. Only the report generator needs a third-party package.
+plotly>=5.18,<6

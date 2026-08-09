@@ -1,0 +1,13 @@
+This directory is intentionally empty.
+
+Benchmark results land here when `make bench` is run. Nothing in this repository
+has been executed, so there are no results yet, and every performance figure in
+the README and in docs/expected-performance.md is a model-derived projection
+rather than a measurement.
+
+Once results exist here:
+  * `python3 tools/make_report.py` turns them into bench/report.html
+  * the "Measured results" table in README.md can be filled in
+  * the placeholder tokens in the README's resume bullets can be substituted
+
+Until then, do not cite any performance number from this project anywhere.

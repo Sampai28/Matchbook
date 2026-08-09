@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matchbook — depth of book</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Matchbook</h1>
+  <div class="meta">
+    <span id="engine-badge" class="badge">engine —</span>
+    <span id="seq" class="mono">seq —</span>
+    <span id="conn" class="mono status-idle">not connected</span>
+  </div>
+</header>
+
+<section class="controls">
+  <label for="symbol">Symbol</label>
+  <input id="symbol" type="text" value="MBK" autocomplete="off">
+
+  <label for="depth">Depth</label>
+  <input id="depth" type="number" value="12" min="1" max="100">
+
+  <label for="poll">Poll (ms)</label>
+  <input id="poll" type="number" value="500" min="100" max="10000">
+
+  <button id="toggle" class="primary">Start</button>
+  <button id="refresh">Refresh once</button>
+</section>
+
+<section class="spread-bar">
+  <div class="spread-cell">
+    <div class="label">best bid</div>
+    <div id="best-bid" class="value bid">—</div>
+  </div>
+  <div class="spread-cell">
+    <div class="label">spread</div>
+    <div id="spread" class="value">—</div>
+  </div>
+  <div class="spread-cell">
+    <div class="label">best ask</div>
+    <div id="best-ask" class="value ask">—</div>
+  </div>
+  <div class="spread-cell">
+    <div class="label">resting orders</div>
+    <div id="resting" class="value">—</div>
+  </div>
+</section>
+
+<main>
+  <section class="ladder">
+    <h2>Ladder</h2>
+    <table id="ladder-table">
+      <thead>
+        <tr>
+          <th class="num">bid qty</th>
+          <th class="num">orders</th>
+          <th class="num price">price</th>
+          <th class="num">orders</th>
+          <th class="num">ask qty</th>
+        </tr>
+      </thead>
+      <tbody id="ladder-body">
+        <tr><td colspan="5" class="empty">Press Start, or Refresh once.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Submit an order</h2>
+    <div class="row"><label for="o-side">Side</label>
+      <select id="o-side"><option>BUY</option><option>SELL</option></select></div>
+    <div class="row"><label for="o-type">Type</label>
+      <select id="o-type">
+        <option>LIMIT</option><option>MARKET</option><option>IOC</option>
+        <option>FOK</option><option>POST_ONLY</option>
+      </select></div>
+    <div class="row"><label for="o-price">Price</label>
+      <input id="o-price" type="number" value="100000"></div>
+    <div class="row"><label for="o-qty">Quantity</label>
+      <input id="o-qty" type="number" value="100"></div>
+    <div class="row"><label for="o-part">Participant</label>
+      <input id="o-part" type="number" value="1"></div>
+    <div class="row actions"><button id="send" class="primary">Send order</button></div>
+    <pre id="response" class="response">—</pre>
+  </section>
+</main>
+
+<footer>
+  <span>Static page, no build step. Served by <code>matchbook-server</code> from <code>web/</code>.</span>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+# Matchbook replay fixture — a hand-written stream, not generated.
+#
+# Every order type and both amend operations appear here, in an order chosen so
+# that each one lands on a book state where its distinguishing behaviour is
+# actually exercised rather than trivially satisfied.
+#
+# Replaying this through all four engines must produce four byte-identical event
+# logs, and replaying it twice through one engine must produce the same bytes
+# both times. That is the whole determinism claim, in 40 lines.
+#
+# Format: see tools/flowgen.py
+#   N,<client_id>,<participant>,<side>,<type>,<price|->,<qty>
+#   C,<client_id>,<participant>
+#   R,<orig_id>,<new_id>,<participant>,<price|->,<qty>
+
+# --- build a two-sided book -------------------------------------------------
+N,1,1,S,LIMIT,100010,100
+N,2,2,S,LIMIT,100010,50
+N,3,3,S,LIMIT,100020,75
+N,4,4,S,LIMIT,100030,200
+N,5,1,B,LIMIT,99990,100
+N,6,2,B,LIMIT,99990,60
+N,7,3,B,LIMIT,99980,150
+N,8,4,B,LIMIT,99970,300
+
+# --- FIFO within a level: takes order 1 before order 2 ----------------------
+N,10,5,B,LIMIT,100010,120
+
+# --- partial fill must not lose queue position ------------------------------
+N,11,5,B,LIMIT,100010,10
+
+# --- POST_ONLY that does not cross rests ------------------------------------
+N,12,6,B,POST_ONLY,99995,80
+
+# --- POST_ONLY that would cross is rejected outright ------------------------
+N,13,6,B,POST_ONLY,100020,80
+
+# --- IOC takes what it can and cancels the remainder ------------------------
+N,14,7,B,IOC,100020,500
+
+# --- FOK with insufficient liquidity: rejected, no fills --------------------
+N,15,7,B,FOK,100030,100000
+
+# --- FOK that can be satisfied fills completely -----------------------------
+N,16,7,B,FOK,100030,50
+
+# --- MARKET sweeps whatever is left on the ask side -------------------------
+N,17,8,B,MARKET,-,100
+
+# --- rebuild some asks so later operations have something to work with ------
+N,18,1,S,LIMIT,100015,120
+N,19,2,S,LIMIT,100025,90
+
+# --- self-trade prevention: participant 1 crosses its own resting ask -------
+N,20,1,B,LIMIT,100015,60
+
+# --- cancel a resting bid ---------------------------------------------------
+C,7,3
+
+# --- cancel an order that is already gone: rejected -------------------------
+C,7,3
+
+# --- cancel someone else's order: rejected as unknown -----------------------
+C,5,9
+
+# --- replace: pure quantity reduction, keeps time priority ------------------
+R,5,105,1,-,40
+
+# --- replace: reprice, loses time priority ----------------------------------
+R,6,106,2,99985,60
+
+# --- replace: reprice into a cross, fills immediately -----------------------
+R,105,205,1,100025,40
+
+# --- replace an unknown order: rejected -------------------------------------
+R,9999,10000,1,100000,10
+
+# --- market order into an empty side ----------------------------------------
+N,30,8,S,MARKET,-,10000
+N,31,8,S,MARKET,-,10
+
+# --- leave a resting book behind so the final-state diff has content --------
+N,40,1,B,LIMIT,99960,100
+N,41,2,B,LIMIT,99950,200
+N,42,3,S,LIMIT,100040,150
+N,43,4,S,LIMIT,100050,250

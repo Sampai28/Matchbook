@@ -1,0 +1,80 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "Release (-O2, NDEBUG) — use this for benchmarking",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-debug",
+      "displayName": "Debug (-O0 -g3) — correctness work only, never benchmarks",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g3"
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-asan",
+      "displayName": "AddressSanitizer + UndefinedBehaviorSanitizer",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -g",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "bench-native",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build-native",
+      "displayName": "Release + -march=native — fastest, not comparable across machines",
+      "cacheVariables": {
+        "MATCHBOOK_NATIVE_ARCH": "ON",
+        "MATCHBOOK_BUILD_TESTS": "OFF",
+        "MATCHBOOK_BUILD_SERVER": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "bench-native", "configurePreset": "bench-native" }
+  ],
+  "testPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
