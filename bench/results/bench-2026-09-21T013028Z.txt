@@ -1,0 +1,55 @@
+# machine fingerprint
+# cpu_model        : AMD Ryzen 7 260 w/ Radeon 780M Graphics
+# hardware_threads : 16
+# kernel           : Linux version 6.6.87.2-microsoft-standard-WSL2 (root@439a258ad544) (gcc (GCC) 11.2.0, GNU ld (GNU Binutils) 2.37) #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025
+# compiler         : g++ 13.3.0
+# build_type       : Release
+# build_flags      : -O2 -DNDEBUG native-g++-13.3.0
+# tsc_ghz          : 3.761040
+# timestamp_utc    : 2026-09-21T01:30:28Z
+# NOTE: laptop frequency scaling makes absolute figures uncertain.
+#       Relative deltas between versions in the same run are the
+#       trustworthy result.
+# iterations 200000
+# warmup 20000
+# reps 5
+# book_depth 2000
+# match_levels 5
+# seed 12648430
+# format: <version> <operation> <metric> <value>
+v1 insert p50_ns 101
+v1 insert p99_ns 424
+v1 insert p999_ns 767
+v1 insert throughput_ops_per_sec 5619973
+v1 insert p50_spread_pct 19.802
+v1 insert throughput_spread_pct 44.497
+v1 cancel p50_ns 202
+v1 cancel p99_ns 515
+v1 cancel p999_ns 858
+v1 cancel throughput_ops_per_sec 4169024
+v1 cancel p50_spread_pct 30.198
+v1 cancel throughput_spread_pct 24.219
+v1 match p50_ns 30
+v1 match p99_ns 30
+v1 match p999_ns 60
+v1 match throughput_ops_per_sec 18816785
+v1 match p50_spread_pct 0
+v1 match throughput_spread_pct 7.46889
+v2 insert p50_ns 60
+v2 insert p99_ns 272
+v2 insert p999_ns 545
+v2 insert throughput_ops_per_sec 9284301
+v2 insert p50_spread_pct 16.6667
+v2 insert throughput_spread_pct 26.8101
+v2 cancel p50_ns 181
+v2 cancel p99_ns 505
+v2 cancel p999_ns 838
+v2 cancel throughput_ops_per_sec 4598631
+v2 cancel p50_spread_pct 38.674
+v2 cancel throughput_spread_pct 44.2827
+v2 match p50_ns 30
+v2 match p99_ns 60
+v2 match p999_ns 90
+v2 match throughput_ops_per_sec 17137602
+v2 match p50_spread_pct 0
+v2 match throughput_spread_pct 14.5412
