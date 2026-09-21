@@ -114,19 +114,55 @@ docker-test:
 docker-serve: docker-build
 	docker run --rm -p 8080:8080 matchbook:latest
 
+## ui-dev: Vite dev server on :5173, proxying the API to a local engine on :8080
+ui-dev:
+	cd ui && npm install && npm run dev
+
+## ui-build: typecheck and produce the production bundle in ui/dist
+ui-build:
+	cd ui && npm install && npm run build
+
+## ui-test: the Vitest suite (delta application, gaps, validation, windowing)
+ui-test:
+	cd ui && npm install && npm run test
+
+## ui-load: drive the running server with generated flow, for the UI comparison
+##   make ui-load RATE=1200 DURATION=20
+ui-load:
+	$(PYTHON) tools/flowgen.py --count 20000 --seed 7 > /tmp/mbk-flow.csv
+	$(PYTHON) tools/uiload.py --input /tmp/mbk-flow.csv \
+		--rate $(or $(RATE),1200) --workers 16 --duration $(or $(DURATION),20)
+
+## verify: everything that can fail — C++ suite, UI types, UI tests
+verify:
+	docker build -f docker/Dockerfile --target test -t matchbook:test .
+	docker run --rm matchbook:test
+	cd ui && npm install && npm run typecheck && npm run test
+
 ## asan: build and test under AddressSanitizer and UBSan
 asan:
 	cmake --preset asan
 	cmake --build --preset asan -j
 	ctest --preset asan
 
+## up: the whole stack — engine on :8080, React terminal on :3000
+up:
+	docker compose -f docker/docker-compose.yml up --build -d
+	@echo "  terminal      : http://localhost:3000"
+	@echo "  engine + web/ : http://localhost:8080"
+
+## down: stop the stack
+down:
+	docker compose -f docker/docker-compose.yml down
+
 ## clean: remove all build directories
 clean:
-	rm -rf build build-debug build-asan build-native
+	rm -rf build build-debug build-asan build-native ui/dist ui/node_modules
 
 ## clean-results: remove benchmark results and the generated report
 clean-results:
 	rm -f bench/results/*.txt bench/report.html
 
 .PHONY: help build test diff-test replay-diff fuzz bench report serve \
-        docker-build docker-test docker-serve asan clean clean-results
+        docker-build docker-test docker-serve asan clean clean-results \
+        ui-dev ui-build ui-test ui-load verify up down

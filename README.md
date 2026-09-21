@@ -1,285 +1,174 @@
 # Matchbook
 
 A deterministic, single-threaded **limit order book and matching engine** in
-C++20 with price-time priority — the core data structure of an electronic
-exchange — implemented four times, from an obvious baseline to a cache-tuned
-version, with correctness preserved at every step.
-
----
+C++20 with price-time priority, implemented four times from an obvious baseline
+to a cache-tuned version — plus a streaming market data gateway and a React
+trading terminal that renders the book live.
 
 ## What a limit order book is, and why the latency is hard
 
-An exchange maintains, for each instrument, a list of every resting buy order and
-every resting sell order. Buys are ranked by price descending, sells by price
-ascending, and orders at the same price are ranked by arrival time — this is
-*price-time priority*. When a new order arrives willing to trade at a price
-already resting on the other side, the two are matched and a trade prints;
-whatever is left over either joins the book or leaves, depending on the order
-type. The hard part is not the algorithm, which fits on a napkin. The hard part
-is that this data structure sits directly in the path of every message the venue
-receives, must produce identical output for identical input forever, and is
-judged on its **tail** latency rather than its average: an engine whose median is
-40 ns and whose p99.9 is 40 µs occasionally loses someone a lot of money. Jitter
-is a fairness problem, so the interesting engineering is in removing sources of
-*variance* — allocation, cache misses, unpredictable branches — not just in
-reducing the mean.
-
-This project is about that removal, done in measured steps. The point is not that
-matching works; it is the discipline of the optimisation journey.
-
----
+An exchange maintains, per instrument, every resting buy and sell order. Buys
+rank by price descending, sells ascending, ties broken by arrival time. When an
+order arrives willing to trade at a price resting on the other side, the two
+match and a trade prints. The algorithm fits on a napkin. The hard part is that
+this structure sits in the path of every message the venue receives, must
+produce identical output for identical input forever, and is judged on its
+**tail** rather than its average — an engine whose median is 40 ns and whose
+p99.9 is 40 µs occasionally loses someone a lot of money. The interesting work
+is removing *variance*: allocation, cache misses, unpredictable branches.
 
 ## The four implementations
 
-All four sit behind one interface (`IBook`) and are selectable at runtime, so the
-tests, the differential oracle, the server and the benchmark all drive the same
-API. They must produce **byte-identical event logs**.
+All four sit behind one interface (`IBook`), selectable at runtime, and must
+produce byte-identical event logs.
 
-| | Price ladder | Orders | Top of book | What it demonstrates |
-|---|---|---|---|---|
-| **V0 naive** | `std::map<Price, std::list<Order>>` | by value, allocates freely | tree ends | Correctness reference. Written to be obviously right. |
-| **V1 pooled** | `std::map<Price, IntrusiveList>` | pre-allocated pool, intrusive links | tree ends | Enqueueing allocates nothing. |
-| **V2 flat** | contiguous array indexed by ticks-from-base | pooled, intrusive | two-level occupancy bitmap | Tree descent replaced by an indexed load. |
-| **V3 tuned** | same, `alignas(64)` levels | packed `HotOrder`, hot fields in one cache line | cached index | Fewer cache lines touched, fewer mispredicts. |
-
-Each is a self-contained file under `src/engine/`. The diff between
-`v0_book.cpp` and `v1_book.cpp` is the entire "remove allocation" change; between
-`v1` and `v2`, the entire "flatten the ladder" change.
-
-Design reasoning for each pass is in
-[`docs/architecture.md`](docs/architecture.md); the cost model behind the
-choices is in [`docs/expected-performance.md`](docs/expected-performance.md).
-
----
-
-## Order type semantics
-
-| Type | On arrival | Remainder | Rejected when |
+| | Price ladder | Orders | Top of book |
 |---|---|---|---|
-| `LIMIT` (GTC) | matches everything that crosses | **rests** on the book | price invalid, off-tick, outside band |
-| `MARKET` | matches at any price | **cancelled** | a price was supplied |
-| `IOC` | matches what crosses its limit | **cancelled** | price invalid |
-| `FOK` | all-or-nothing, decided before any fill | n/a | full quantity unavailable → `FOK_UNFILLABLE`, **zero fills emitted** |
-| `POST_ONLY` | never takes liquidity | rests | would cross → `POST_ONLY_WOULD_CROSS`, zero fills |
-| `CANCEL` | removes a resting order | n/a | unknown, terminal, or wrong participant |
-| `REPLACE` | see below | n/a | unknown, terminal, or wrong participant |
+| **V0 naive** | `std::map<Price, std::list<Order>>` | by value, allocates freely | tree ends |
+| **V1 pooled** | `std::map<Price, IntrusiveList>` | pre-allocated pool, intrusive links | tree ends |
+| **V2 flat** | contiguous array indexed by ticks-from-base | pooled, intrusive | two-level bitmap |
+| **V3 tuned** | same, `alignas(64)` levels | packed `HotOrder` | cached index |
 
-**Replace** is cancel-then-new, with one exception: a pure quantity *decrease* at
-the same price is applied in place and **keeps time priority**. Shrinking an
-order takes nothing from anyone queued behind it. Every other amend — a price
-change, or more size — gives the order something it did not have, and re-queues.
+## Measured engine results
 
-**Trades print at the resting order's price.** The maker arrived first and set
-the terms; the taker accepted them.
+AMD Ryzen 7 260, WSL2 native, g++ 13.3.0, `-O2 -DNDEBUG`, pinned to one core
+with `taskset -c 2`, 200k operations per repetition, 20k warmup discarded,
+median of 5. Raw output in `bench/results/`, full analysis in
+[`docs/optimization-log.md`](docs/optimization-log.md).
 
-**Self-trade prevention** uses a *cancel-resting* policy: when an aggressor would
-fill against its own resting order, that resting order is cancelled and matching
-continues. The aggressor is not penalised for the collision.
+| Version | insert p50 | insert p99 | insert p99.9 | cancel p50 | match p50 | throughput |
+|---|---:|---:|---:|---:|---:|---:|
+| V0 | 69 ns | 119 ns | 298 ns | 119 ns | 39 ns | 8.18 M/s |
+| V1 | 59 ns | 79 ns | 268 ns | 109 ns | 29 ns | 11.44 M/s |
+| V2 | 49 ns | **99 ns** | 228 ns | 39 ns | 29 ns | 12.28 M/s |
+| V3 | 39 ns | 79 ns | 129 ns | 39 ns | 29 ns | 13.67 M/s |
 
----
+End to end: **1.77×** on insert p50, **2.31×** on insert p99.9, **3.05×** on
+cancel p50. Projected was 3–4×.
 
-## Validation and integrity
-
-Every rejection has a named reason and a counter, all exported by `GET /stats`.
-
-**Inbound gates:** non-positive or overflowing price/quantity · price not a
-multiple of tick size · price outside the configured band · unknown symbol ·
-duplicate client order id · cancel or replace of an unknown or terminal order ·
-self-trade prevention · `MARKET` with a price · `LIMIT` without one.
-
-**Book invariants** — checked after every event in paranoid mode, sampled in
-release: book never crossed · per-level aggregate equals the sum of its resting
-orders · level counts match · total resting equals order-index size · index size
-equals pool usage · bitmap agrees with the level array · cached top-of-book
-matches a fresh scan · sequence numbers strictly monotonic · **conservation**
-(buy-side filled quantity equals sell-side, and notional reconciles).
-
-Paranoid mode aborts with a full state dump. Release increments
-`invariant_violations` and logs. Neither uses `assert()` — an integrity check
-that compiles away under `NDEBUG` is worse than no check, because it produces
-false confidence.
-
----
+Three results contradicted the hypotheses, and they are the useful ones.
+**V2's insert p99 regressed 25%** against V1 while its median improved — the
+flat array trades a predictable pointer chase for an indexed load that is fast
+when warm and a DRAM round trip when cold, so the median wins and the tail
+loses. **Match never improved after V1**, though both V2 and V3 predicted their
+largest gains there; locating a price level was never the expensive part of
+matching. And **V2 won the sparse-book configuration it was predicted to lose**,
+by 41% on insert p50, because `std::map` degrades with depth faster than a flat
+array does. V3's cancel p50 carries a 179% inter-run spread and should not be
+read as a result.
 
 ## Quickstart
 
-Two workflows, deliberately separate.
-
-### Build and test — in Docker
-
-Reproducible, and pinned to `gcc:13` so the containerised compiler matches
-WSL2's native g++ 13.3.0.
-
 ```bash
-make docker-test
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-Runs the unit tests, the replay-determinism check, the differential oracle
-against the Python reference, and a short fuzz run.
+- Trading terminal — <http://localhost:3000>
+- Engine API and the zero-build fallback viewer — <http://localhost:8080>
+
+Tests and the differential oracle:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build server
+make docker-test     # unit tests, replay determinism, Python oracle, fuzz
+make ui-test         # Vitest: delta application, gap recovery, validation
+make verify          # all of the above
 ```
 
-Serves the ladder viewer and the API on <http://localhost:8080>.
-
-### Benchmark — natively in WSL2
+Benchmarks run **natively under WSL2, never in Docker** — containerised timing
+on a Windows host inherits Hyper-V scheduling jitter that, at tens of
+nanoseconds, is the dominant term. `cmake` is not required; the harness builds
+with g++ directly:
 
 ```bash
-cmake --preset release
-cmake --build --preset release -j
-./bench/run_bench.sh
-python3 tools/make_report.py
+g++ -std=c++20 -O2 -DNDEBUG -Iinclude -Isrc -I. \
+    src/engine/*.cpp src/engine/*/*.cpp src/validation/*.cpp bench/bench_main.cpp \
+    -o build-native/matchbook-bench
+MATCHBOOK_BENCH_BIN=build-native/matchbook-bench ./bench/run_bench.sh
 ```
 
-`make bench` refuses to run inside a container. Containerised timing on a
-Windows host inherits scheduling jitter from Hyper-V and I/O latency from the
-filesystem shim; at millisecond resolution that is invisible, but at the
-tens-of-nanoseconds resolution this harness works in it is the dominant term, and
-the numbers would describe the virtualisation stack rather than the order book.
+## The terminal
 
-`perf` is assumed unavailable under the stock WSL2 kernel, so the harness relies
-entirely on in-process timing: a calibrated `rdtsc` for per-operation latency and
-`std::chrono::steady_clock` for wall time. It pins to one core, discards warmup,
-runs five independent repetitions, and reports the median alongside the
-inter-run spread — the spread being the error bar that says whether a difference
-between two versions means anything.
+React 18 + TypeScript in strict mode, Vite, no state library. A depth ladder
+with size bars and virtualized rows, order entry with validation mirroring the
+engine's gates, a trade tape, and a stats panel reading engine percentiles from
+`/stats/engine`.
 
-### Make targets
+Market data arrives over Server-Sent Events: a sequence-numbered snapshot on
+connect, then incremental deltas. The client detects sequence gaps and
+re-snapshots. Wire format is specified in [`docs/protocol.md`](docs/protocol.md).
 
-| Target | Does |
-|---|---|
-| `build` | configure + compile (release) |
-| `test` | Catch2 suite via CTest |
-| `diff-test` | Python oracle vs all four engines over 50,000 operations |
-| `replay-diff` | byte-identical replay across runs and across versions |
-| `fuzz` | validation-layer fuzz target |
-| `bench` | the harness, natively |
-| `report` | `bench/report.html` from `bench/results/` |
-| `serve` | HTTP server + ladder viewer on :8080 |
-| `docker-build`, `docker-test` | containerised build and full check suite |
+### Naive vs optimized rendering
 
----
+The UI ships both render paths and a toggle between them, because the
+difference is the point. **Naive** commits to React state on every message and
+re-renders the full ladder from a fresh snapshot. **Optimized** applies deltas
+to a mutable book outside React, commits once per `requestAnimationFrame`, and
+virtualizes rows.
 
-## HTTP API
+Identical offered load both runs: 24,015 operations replayed at 1,200 ops/s over
+20 seconds, against a book of ~50 price levels.
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /order` | submit — JSON body with `symbol`, `clientOrderId`, `side`, `type`, `quantity`, `price` |
-| `DELETE /order/{id}?symbol=X&participant=N` | cancel |
-| `GET /book/{symbol}?depth=N` | depth-of-book ladder |
-| `GET /stats` | counters, every rejection reason, invariant violations, latency percentiles |
-| `GET /healthz` | liveness |
-| `GET /` | the static ladder viewer |
+| | naive | optimized |
+|---|---:|---:|
+| update-to-paint p50 | 764.0 ms | **12.1 ms** |
+| update-to-paint p95 | 9,064.9 ms | **600.0 ms** |
+| update-to-paint p99 | 9,574.1 ms | **931.1 ms** |
+| update-to-paint max | 157,748.9 ms | **3,706.1 ms** |
+| dropped frames | 1,160 | **58** |
+| longest frame | 14,450.2 ms | **999.5 ms** |
+| React commits | 289 | 989 |
 
-The viewer is one HTML page with vanilla JS and no build step, served by the
-binary from `web/`. It polls the book, draws a live bid/ask ladder with size
-bars, and can submit orders directly.
-
----
-
-## Correctness scaffolding
-
-**Differential oracle.** `tools/reference_matcher.py` is a deliberately slow,
-obviously-correct matcher written independently in Python. `make diff-test`
-generates seeded order flow, runs it through the reference and all four C++
-engines, and asserts the event logs and final book states are identical.
-`tools/validate_fills.py` prints the first divergence with context when they are
-not.
-
-**Deterministic replay.** `make replay-diff` replays
-`tests/fixtures/recorded_stream.csv` twice through each engine and across all
-four, requiring byte-identical output every time. The event log deliberately
-carries no timestamps — they are the one field that legitimately differs between
-two correct runs, and including them would make this assertion impossible.
-
-**Unit tests** (Catch2 v3) cover price-time priority under partial fills, each
-order type's semantics including FOK's all-or-nothing rejection and POST_ONLY's
-rejection on cross, cancel/replace of unknown and terminal orders, and V2's
-price-array boundary behaviour. Every behavioural test runs against all four
-engines.
-
-**Fuzzing.** `tests/fuzz_validation.cpp` builds standalone with a seeded corpus
-by default, or with libFuzzer under clang via `-DMATCHBOOK_LIBFUZZER=ON`.
-
----
+The p50 difference is **63×**. The counterintuitive row is commits: the
+optimized path committed *more often* and was still vastly faster, because each
+commit was cheap. The naive path managed only 289 commits in 20 seconds because
+each one was expensive enough to block the next — a 157-second worst-case
+update-to-paint is a tab that has stopped responding, not a slow one.
 
 ## Design decisions
 
-**Why intrusive lists.** An intrusive list stores its `prev`/`next` pointers
-inside the element rather than in a node the container allocates. Two
-consequences: enqueueing an order allocates nothing, and cancelling is O(1) from
-the order's address alone — the index hands back a pointer and the order unlinks
-itself, with no search and no iterator to keep valid. The cost is that an order
-can be in at most one list at a time, which is exactly true here: an order rests
-at one price level or nowhere.
+**SSE, not WebSocket.** Market data here is unidirectional and order entry
+already has a REST path with typed errors. WebSocket would add a dependency
+(cpp-httplib has no WebSocket support), a hand-written reconnection strategy,
+and a second error convention. `EventSource` reconnects for free, and its
+`Last-Event-ID` maps onto the protocol's sequence numbers.
 
-**Why a flat price array, and when it is the wrong choice.** Indexing
-`(price - base) / tick` is a subtract, a divide and one load; a `std::map`
-descent is roughly seven pointer chases with poor locality and a mispredicted
-branch at most of them. That trade is good when the active price range is narrow
-and dense. It is bad when it is not: memory is paid for every representable level
-whether occupied or not, prices outside the window cannot be represented *at all*
-(V2/V3 reject them with `PriceOutsideArray` while V0/V1 accept them —
-`tests/test_v2_boundary.cpp` asserts this divergence deliberately), and a
-trending book walks into cold levels at DRAM cost. This design suits a liquid
-instrument whose tick size puts active trading across hundreds of levels rather
-than tens of thousands. That is a real and common case, but it is a precondition,
-not a given.
+**Absolute deltas, not increments.** A level delta carries the new quantity,
+not a change to it. Increments compound silently when one is duplicated or
+applied to a level the client got wrong; absolute values are idempotent, so
+ordering is the only thing the client must get right, and `seq` already
+guarantees that.
 
-**Why the order pool never grows.** Every resting order is referenced by raw
-pointer from its price level and from the order index. A `std::vector`
-reallocation would leave all of them dangling. Growth is therefore forbidden, not
-unimplemented; exhaustion is reported as `BookFull`.
+**rAF batching.** The screen refreshes 60 times a second. Committing more often
+than that renders states nobody could have seen, and at 1,200 messages/second
+it is the entire cost of the application.
 
-**Self-trade prevention: cancel-resting.** The alternative — rejecting the
-aggressor — punishes a participant for a collision it may not have known about,
-and leaves the stale resting order in place to cause the same collision again.
+**No state library.** The book is a mutable structure deliberately outside
+React; a store would reintroduce the per-update immutability this design exists
+to avoid. What remains is one `useState` per committed frame.
 
-**Why `virtual` dispatch stayed.** One indirect call per operation, paid
-identically by all four versions. The benchmark measures a realistic deployment
-where the implementation is chosen at runtime, and removing the vtable from V3
-alone would flatter it for a reason unrelated to the optimisation being studied.
+**A wider server thread pool with one mutex.** The engine is still lock-free and
+single-threaded, but an SSE connection holds its worker for the life of the
+stream — with the original `ThreadPool(1)`, the first browser to connect froze
+the whole server. The pool is now 8 and every engine call takes
+`ServerState::engine_mu`. Streaming threads hold it only to copy a queued
+message, never while writing to a socket.
 
-### Known limitations
+**Slow consumers are dropped, not waited on.** A full subscriber queue drops the
+message rather than blocking the publisher, which runs on the thread that just
+mutated the book. The drop becomes a sequence gap, which the client is required
+to detect and recover from — so it is a supported path, not data loss.
 
-- **Single-threaded**, with no locking anywhere. The HTTP server runs exactly one
-  worker for this reason; a second would corrupt the book.
+## Known limitations
+
+- **Single-threaded engine**, no locking inside it. The server serialises access.
 - **Single process, no persistence.** No journal, no snapshot, no recovery.
 - **No cross-symbol atomicity.** Each symbol is an independent book.
-- **The reference price is fixed at construction.** A real venue recalculates it
-  intraday; here the price band and the V2/V3 array window never move.
-- **Participant identity is not authentication.** `ParticipantId` is whatever the
-  caller claims, so self-trade prevention is only as trustworthy as the caller.
+- **The reference price is fixed at construction**, so the price band and the
+  V2/V3 array window never move intraday.
+- **Participant identity is not authentication.**
 - **The order index is a `std::unordered_map` in all four versions**, allocating
-  per insert. The cost model predicts it becomes the dominant term by V3, which
-  would make replacing it the natural next pass.
-
----
-
-## Repository layout
-
-```
-include/matchbook/       public headers: types, Order, IBook, Engine, events, metrics
-src/engine/v0_naive/     baseline: std::map + std::list
-src/engine/v1_pool/      pooled orders + intrusive lists
-src/engine/v2_flat/      flat price array + occupancy bitmap
-src/engine/v3_tuned/     packed records, cached top-of-book, branch hints
-src/engine/common/       order pool, intrusive list, two-level bitmap
-src/validation/          inbound validation + invariant checker
-src/server/              cpp-httplib server, JSON, metrics
-web/                     static ladder viewer (no build step)
-tests/                   Catch2 suite, fuzz target, replay tool, fixture
-bench/                   harness, HdrHistogram, rdtsc, results/
-tools/                   flowgen, reference_matcher, validate_fills, make_report
-docs/                    architecture, expected-performance, optimization-log, BUILD_NOTES
-docker/                  Dockerfile (gcc:13), docker-compose.yml
-```
-
----
-
-## License
-
-Unlicensed personal project. All dependencies are free and open source — Catch2
-(BSL-1.0), cpp-httplib (MIT), Plotly (MIT). Nothing here requires an account, an
-API key, or a paid service.
+  per insert. The measurements suggest it is now the dominant term.
+- **The V3 ablation is not done** — isolating its four changes needs four
+  additional builds the source does not currently support.
+- **Benchmarks are laptop measurements** with frequency scaling active. Relative
+  deltas within a run are trustworthy; absolute figures drift between sessions.

@@ -1,7 +1,6 @@
 # Architecture
 
-Working notes behind the README summary. **Nothing here has been compiled or
-run**; this describes the design as written, not as verified.
+Working notes behind the README summary.
 
 ---
 
@@ -132,7 +131,7 @@ Implemented as cancel-then-new, with one exception.
 
 | Change | Behaviour |
 |---|---|
-| Quantity decrease at the same price | In-place, **keeps time priority** |
+| Quantity unchanged or decreased, same price | In-place, **keeps time priority** |
 | Quantity increase | Cancel + new, loses priority |
 | Any price change | Cancel + new, loses priority |
 | New quantity ≤ already filled | Treated as a cancel |
@@ -141,6 +140,12 @@ Shrinking an order takes nothing from anyone queued behind it, so there is no
 fairness argument for sending it to the back. Every other amend gives the order
 something it did not have — a better price, or more size at the same price — and
 must therefore re-queue.
+
+The boundary is "does not increase", not "strictly decreases": a resubmission at
+the same price and size changes nothing for anyone queued behind, and demoting
+it would penalise a client for sending a redundant amend — including the retry
+of an amend it was unsure had landed. `tests/test_cancel_replace.cpp` pins both
+halves of that rule.
 
 ---
 
@@ -214,8 +219,13 @@ at all — it produces false confidence.
 
 ## Known limitations
 
-- **Single-threaded.** No locking anywhere. The HTTP server runs exactly one
-  worker thread for this reason. A second thread would corrupt the book.
+- **Single-threaded engine.** No locking anywhere inside it. The HTTP server
+  originally ran exactly one worker thread for this reason. It no longer can —
+  an SSE stream occupies its worker for the life of the connection, so one
+  browser would have frozen the server — and safety now comes from a mutex in
+  `ServerState` that every engine call acquires. The engine itself is
+  unchanged; access to it is serialised one level up. See "The market data
+  gateway" below.
 - **Single process, no persistence.** State is lost on restart. There is no
   journal, no snapshot, no recovery.
 - **No cross-symbol atomicity.** Each symbol is an independent book. There is no
@@ -230,3 +240,82 @@ at all — it produces false confidence.
   allocates per insert and chases a bucket pointer. The performance model
   predicts it becomes the dominant cost by V3 — which would make replacing it
   the natural V4, and this project does not contain a V4.
+
+---
+
+## The market data gateway
+
+The gateway learns about book changes by being told to publish after a
+mutation, then diffing the book's current state against the state it last
+published. That is not the fastest possible design — an engine emitting level
+deltas directly would avoid the diff entirely — but it keeps all four engine
+implementations untouched, which is the premise the whole comparison rests on.
+The diff runs on the HTTP thread, never in the matching path.
+
+**Threading.** The gateway holds its own mutex, separate from the engine's. A
+streaming thread takes the gateway lock only long enough to copy a queued
+message; it never holds it while writing to a socket, and never touches the
+engine lock at all. Publishing happens *inside* the engine lock, so the diff
+sees the book in exactly the state the operation left it — published outside,
+two concurrent submits could both diff against the same final state and the
+sequence would advance twice for one change.
+
+**Slow consumers are dropped.** A subscriber whose queue is full loses the
+message rather than blocking the publisher, because the publisher is the thread
+that just mutated the book. Blocking it would let one browser on a bad
+connection stall order entry for everyone. The dropped message becomes a
+sequence gap, which the client is required to detect and recover from by
+re-snapshotting — making the drop a supported path rather than data loss.
+
+Wire format in `docs/protocol.md`.
+
+---
+
+## Frontend performance
+
+The browser is a second latency domain with a completely different cost model
+from the engine, and the terminal is built around that difference.
+
+**Why the naive path fails.** React state is immutable by convention: each
+update allocates, and every component reading it re-renders. Applying a market
+data delta with `setState` inside an `onmessage` handler is the obvious
+implementation and it collapses under real rates. Each message triggers a full
+reconciliation of the ladder, and the reconciliations queue faster than the
+browser can retire them. Measured on this project at 1,200 messages/second:
+update-to-paint p50 of 764 ms, a worst case of 157 seconds, and 1,160 dropped
+frames in twenty seconds. That is not a slow tab, it is an unresponsive one.
+
+**The three changes that fix it**, in order of how much they contribute:
+
+1. **Apply deltas outside React, commit on `requestAnimationFrame`.** The book
+   is plain `Map`s mutated in place. React is told once per frame. The
+   intermediate states are never rendered because nobody could have seen them —
+   the display refreshes 60 times a second no matter how many messages arrive.
+   This is almost all of the improvement.
+2. **Virtualize the ladder.** Only rows inside the viewport plus a small
+   overscan are rendered. A 400-level book costs the same as a 30-level one.
+   The windowing arithmetic is a pure function in `ui/src/virtual/windowing.ts`
+   so it can be tested without a DOM; off-by-one errors here surface as rows
+   flickering at the viewport edge, which is miserable to debug through a
+   component.
+3. **Stable keys and `React.memo` with an explicit comparator.** Rows are keyed
+   by price, not array index — an index key makes React reuse a DOM node for a
+   different price when levels are inserted or removed. The default shallow
+   `memo` comparison would still re-render every row, because the ladder hands
+   out fresh objects each commit; comparing the four rendered fields means a
+   row re-renders only when its own numbers changed.
+
+**What the measurement showed that the design did not predict.** The optimized
+path performs *more* React commits than the naive one (989 against 289 over the
+same load) and is still 63× faster at p50. The naive path commits less because
+each commit is expensive enough to block the next. Commit count is therefore
+not a proxy for render cost, and an optimisation judged by "fewer renders"
+would have scored these two backwards.
+
+**Instrumentation.** `performance.now()` rather than `Date.now()` — monotonic
+and sub-millisecond, where `Date.now()` has millisecond granularity, coarser
+than the effect being measured. Update-to-paint is measured from message
+arrival to a `requestAnimationFrame` callback scheduled after React commits,
+which is the closest a page gets to "the user saw it" without the Element
+Timing API. It is consistent between both modes, which is what a comparison
+needs.
