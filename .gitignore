@@ -13,6 +13,17 @@ CMakeUserPresets.json
 # The generated report is ignored, since it is derived from those results.
 bench/report.html
 
+# UI
+ui/node_modules/
+ui/dist/
+# Vite writes a dependency pre-bundle cache here.
+ui/.vite/
+npm-debug.log*
+
+# package-lock.json is NOT ignored. The UI Dockerfile runs `npm ci` when it is
+# present, which is the only way the container build is reproducible; without
+# it every image build resolves dependencies afresh.
+
 # Python
 __pycache__/
 *.pyc

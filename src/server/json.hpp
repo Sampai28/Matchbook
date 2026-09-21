@@ -54,6 +54,13 @@ public:
     void value(std::uint64_t v) { comma(); out_ += std::to_string(v); first_ = false; }
     void value(int v)           { value(static_cast<std::int64_t>(v)); }
     void value(bool v)          { comma(); out_ += (v ? "true" : "false"); first_ = false; }
+
+    // Explicit const char* overloads. Without them, `value("text")` resolves to
+    // the bool overload and silently emits `true`: pointer-to-bool is a
+    // standard conversion and beats the user-defined conversion to
+    // string_view. It compiles, it runs, and the JSON is wrong — which is
+    // exactly the class of bug that reaches production.
+    void value(const char* v)   { value(std::string_view{v}); }
     void value_double(double v) {
         comma();
         char buf[40];
@@ -66,6 +73,7 @@ public:
     // Convenience: key + value in one call, which is what nearly every call
     // site wants.
     void field(std::string_view k, std::string_view v) { key(k); value(v); }
+    void field(std::string_view k, const char* v)      { key(k); value(v); }
     void field(std::string_view k, std::int64_t v)     { key(k); value(v); }
     void field(std::string_view k, std::uint64_t v)    { key(k); value(v); }
     void field(std::string_view k, bool v)             { key(k); value(v); }

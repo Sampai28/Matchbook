@@ -118,24 +118,70 @@ TEST_CASE("replace that changes price loses time priority", "[replace][priority]
         book.submit(limit(2, Side::Sell, 100'000, 50, 2), sink);
         sink.clear();
 
-        // Move order 1 away and back: it should end up behind order 2.
-        ReplaceRequest rq;
-        rq.original_client_id = 1;
-        rq.new_client_id      = 11;
-        rq.participant        = 1;
-        rq.new_price          = 100'000;
-        rq.new_quantity       = 50;
-        // Same price and same quantity is not a pure reduction, so it is
-        // handled as cancel-then-new and goes to the back.
-        const ReplaceResult r = book.replace(rq, sink);
-        CHECK(r.accepted);
-        CHECK_FALSE(r.priority_kept);
+        // Move order 1 to a different price and back to the original. A price
+        // change is the unambiguous case: the order is asking for a place in a
+        // queue it was never in, so it joins at the back.
+        ReplaceRequest away;
+        away.original_client_id = 1;
+        away.new_client_id      = 11;
+        away.participant        = 1;
+        away.new_price          = 100'100;
+        away.new_quantity       = 50;
+        const ReplaceResult moved = book.replace(away, sink);
+        CHECK(moved.accepted);
+        CHECK_FALSE(moved.priority_kept);
+        sink.clear();
+
+        ReplaceRequest back;
+        back.original_client_id = 11;
+        back.new_client_id      = 12;
+        back.participant        = 1;
+        back.new_price          = 100'000;
+        back.new_quantity       = 50;
+        const ReplaceResult returned = book.replace(back, sink);
+        CHECK(returned.accepted);
+        CHECK_FALSE(returned.priority_kept);
         sink.clear();
 
         book.submit(limit(60, Side::Buy, 100'000, 50, 9), sink);
         const auto fills = fills_of(sink);
         REQUIRE(fills.size() == 1);
         CHECK(fills[0].maker_client_id == 2);   // order 2 is now first
+
+        require_consistent(book);
+    });
+}
+
+TEST_CASE("replace at the same price and quantity keeps time priority",
+          "[replace][priority]") {
+    // The boundary case in the retention rule, pinned deliberately.
+    //
+    // Priority is kept when an amend does not *increase* quantity, not only
+    // when it strictly decreases it. A resubmission at the same price and size
+    // takes nothing from anyone queued behind, so demoting it would penalise a
+    // client for sending a redundant message — no venue does that, and a client
+    // retrying an amend it was unsure landed would silently lose its place.
+    for_each_engine([](IBook& book, EngineVersion) {
+        EventSink sink;
+        book.submit(limit(1, Side::Sell, 100'000, 50, 1), sink);
+        book.submit(limit(2, Side::Sell, 100'000, 50, 2), sink);
+        sink.clear();
+
+        ReplaceRequest rq;
+        rq.original_client_id = 1;
+        rq.new_client_id      = 11;
+        rq.participant        = 1;
+        rq.new_price          = 100'000;
+        rq.new_quantity       = 50;
+        const ReplaceResult r = book.replace(rq, sink);
+        CHECK(r.accepted);
+        CHECK(r.priority_kept);
+        sink.clear();
+
+        book.submit(limit(60, Side::Buy, 100'000, 50, 9), sink);
+        const auto fills = fills_of(sink);
+        REQUIRE(fills.size() == 1);
+        CHECK(fills[0].maker_client_id == 1);   // order 1 kept its place
 
         require_consistent(book);
     });

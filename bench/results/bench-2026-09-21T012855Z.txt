@@ -1,0 +1,91 @@
+# machine fingerprint
+# cpu_model        : AMD Ryzen 7 260 w/ Radeon 780M Graphics
+# hardware_threads : 16
+# kernel           : Linux version 6.6.87.2-microsoft-standard-WSL2 (root@439a258ad544) (gcc (GCC) 11.2.0, GNU ld (GNU Binutils) 2.37) #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025
+# compiler         : g++ 13.3.0
+# build_type       : Release
+# build_flags      : -O2 -DNDEBUG native-g++-13.3.0
+# tsc_ghz          : 3.820013
+# timestamp_utc    : 2026-09-21T01:28:55Z
+# NOTE: laptop frequency scaling makes absolute figures uncertain.
+#       Relative deltas between versions in the same run are the
+#       trustworthy result.
+# iterations 200000
+# warmup 20000
+# reps 5
+# book_depth 20
+# match_levels 5
+# seed 12648430
+# format: <version> <operation> <metric> <value>
+v0 insert p50_ns 69
+v0 insert p99_ns 119
+v0 insert p999_ns 298
+v0 insert throughput_ops_per_sec 8175231
+v0 insert p50_spread_pct 0
+v0 insert throughput_spread_pct 55.206
+v0 cancel p50_ns 119
+v0 cancel p99_ns 308
+v0 cancel p999_ns 497
+v0 cancel throughput_ops_per_sec 6956818
+v0 cancel p50_spread_pct 0
+v0 cancel throughput_spread_pct 6.59363
+v0 match p50_ns 39
+v0 match p99_ns 437
+v0 match p999_ns 606
+v0 match throughput_ops_per_sec 5811755
+v0 match p50_spread_pct 25.641
+v0 match throughput_spread_pct 8.88333
+v1 insert p50_ns 59
+v1 insert p99_ns 79
+v1 insert p999_ns 268
+v1 insert throughput_ops_per_sec 11436917
+v1 insert p50_spread_pct 0
+v1 insert throughput_spread_pct 15.1762
+v1 cancel p50_ns 109
+v1 cancel p99_ns 308
+v1 cancel p999_ns 537
+v1 cancel throughput_ops_per_sec 6964421
+v1 cancel p50_spread_pct 9.17431
+v1 cancel throughput_spread_pct 28.1508
+v1 match p50_ns 29
+v1 match p99_ns 109
+v1 match p999_ns 198
+v1 match throughput_ops_per_sec 14172295
+v1 match p50_spread_pct 0
+v1 match throughput_spread_pct 20.1323
+v2 insert p50_ns 49
+v2 insert p99_ns 99
+v2 insert p999_ns 228
+v2 insert throughput_ops_per_sec 12283009
+v2 insert p50_spread_pct 0
+v2 insert throughput_spread_pct 12.4162
+v2 cancel p50_ns 39
+v2 cancel p99_ns 258
+v2 cancel p999_ns 417
+v2 cancel throughput_ops_per_sec 9654136
+v2 cancel p50_spread_pct 0
+v2 cancel throughput_spread_pct 19.6055
+v2 match p50_ns 29
+v2 match p99_ns 99
+v2 match p999_ns 179
+v2 match throughput_ops_per_sec 14304632
+v2 match p50_spread_pct 0
+v2 match throughput_spread_pct 7.22825
+v3 insert p50_ns 39
+v3 insert p99_ns 79
+v3 insert p999_ns 129
+v3 insert throughput_ops_per_sec 13674164
+v3 insert p50_spread_pct 25.641
+v3 insert throughput_spread_pct 7.82005
+v3 cancel p50_ns 39
+v3 cancel p99_ns 278
+v3 cancel p999_ns 457
+v3 cancel throughput_ops_per_sec 9040397
+v3 cancel p50_spread_pct 179.487
+v3 cancel throughput_spread_pct 15.3644
+v3 match p50_ns 29
+v3 match p99_ns 109
+v3 match p999_ns 189
+v3 match throughput_ops_per_sec 15110608
+v3 match p50_spread_pct 0
+v3 match throughput_spread_pct 12.307

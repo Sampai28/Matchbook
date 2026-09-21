@@ -1,7 +1,10 @@
 # Matchbook local stack.
 #
-#   docker compose -f docker/docker-compose.yml up --build server
+#   docker compose -f docker/docker-compose.yml up --build
 #   docker compose -f docker/docker-compose.yml run --rm test
+#
+# `up` with no service brings up the engine and the React terminal together:
+# the terminal on :3000, the engine and the zero-build fallback viewer on :8080.
 #
 # There is no benchmark service here, on purpose. Benchmarks run natively under
 # WSL2; see bench/run_bench.sh and the note in docker/Dockerfile.
@@ -58,6 +61,29 @@ services:
       - "--engine"
       - "v3"
       - "--paranoid"
+
+  # The React + TypeScript trading terminal.
+  #
+  # nginx serves the built bundle and proxies the API and the SSE stream to the
+  # engine, so the browser talks to one origin and the C++ server needs no CORS
+  # handling. See ui/nginx.conf for the SSE-specific proxy settings, which are
+  # not optional — with buffering on, the stream never reaches the browser.
+  ui:
+    build:
+      context: ../ui
+      dockerfile: Dockerfile
+      target: runtime
+    image: matchbook-ui:latest
+    container_name: matchbook-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      # started, not healthy: the engine's healthcheck shells out to --help,
+      # so "healthy" says the binary runs, not that it is listening. nginx
+      # resolves `server` lazily on the first proxied request anyway.
+      server:
+        condition: service_started
+    restart: unless-stopped
 
   # Unit tests, replay determinism, the differential oracle, and a short fuzz
   # run. This is the target CI would use.

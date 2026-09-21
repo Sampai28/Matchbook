@@ -80,13 +80,38 @@ CMD set -e; \
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
+# cpp-httplib feature-detects brotli, zlib and OpenSSL at configure time and
+# links whatever it finds in the gcc:13 build image. The slim runtime has none
+# of them, so without this the binary dies at startup with
+#   error while loading shared libraries: libbrotlicommon.so.1
+# which reads like a build problem and is really a missing runtime package.
+#
+# `ldd build/matchbook-server` in the build stage is the way to check this list
+# after changing anything about how httplib is configured.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++6 \
         ca-certificates \
+        libbrotli1 \
+        zlib1g \
+        libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --shell /usr/sbin/nologin matchbook
 
 WORKDIR /app
+
+# GCC 13's libstdc++, copied from the build image.
+#
+# Debian bookworm ships GCC 12's, which stops at GLIBCXX_3.4.30. A binary
+# compiled by gcc:13 needs 3.4.31 and 3.4.32, so the stock one fails at load
+# with "version `GLIBCXX_3.4.32' not found" — a message that points at the
+# runtime image while the cause is the compiler choice.
+#
+# Copying the library beats pinning the build to GCC 12: the whole reason the
+# build image is gcc:13 is to match WSL2's native g++ 13.3.0, so that the
+# tested binary and the benchmarked binary come from the same compiler.
+COPY --from=build /usr/local/lib64/libstdc++.so.6* /usr/local/lib64/
+ENV LD_LIBRARY_PATH=/usr/local/lib64
+
 COPY --from=build /src/build/matchbook-server /app/matchbook-server
 COPY web/ /app/web/
 
