@@ -142,7 +142,9 @@ endif()
 # --------------------------------------------------------------------------
 
 if(MATCHBOOK_BUILD_SERVER)
-    add_executable(matchbook-server src/server/server_main.cpp)
+    add_executable(matchbook-server
+        src/server/server_main.cpp
+        src/server/gateway.cpp)
     target_include_directories(matchbook-server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(matchbook-server PRIVATE matchbook_core httplib::httplib)
@@ -216,6 +218,12 @@ if(MATCHBOOK_BUILD_TESTS)
         tests/test_cancel_replace.cpp
         tests/test_v2_boundary.cpp
         tests/test_validation.cpp
+        tests/test_gateway_delta.cpp
+        # The gateway is compiled into the test binary rather than linked from
+        # the server target, because the server is an executable. It has no
+        # dependency on cpp-httplib — the SSE framing is plain string building —
+        # so the tests stay buildable with MATCHBOOK_BUILD_SERVER=OFF.
+        src/server/gateway.cpp
     )
     target_include_directories(matchbook-tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
